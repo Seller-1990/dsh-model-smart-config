@@ -1,0 +1,65 @@
+{
+  "name": "dsh-model-smart-config",
+  "version": "0.3.2",
+  "description": "Smart model setup for DeepSeek Harness third-party API providers: recognize a model ID and fill in context window, input modalities and reasoning levels.",
+  "license": "MIT",
+  "type": "module",
+  "icon": "./icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Seller-1990/dsh-model-smart-config.git"
+  },
+  "homepage": "https://github.com/Seller-1990/dsh-model-smart-config#readme",
+  "bugs": {
+    "url": "https://github.com/Seller-1990/dsh-model-smart-config/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "model-config",
+    "reasoning-efforts",
+    "multimodal"
+  ],
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "rules",
+    "data",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-models"
+      ]
+    }
+  },
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "scripts": {
+    "test": "node --test test/rules.test.mjs && node test/render.test.mjs && node test/placement.test.mjs && node test/interaction.test.mjs",
+    "test:rules": "node --test test/rules.test.mjs"
+  }
+}

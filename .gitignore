@@ -1,0 +1,15 @@
+# 依赖（本插件是 link 安装，不随仓库分发）
+node_modules/
+
+# 本机 Harness profile 的备份与安装痕迹（含用户私有 provider 配置，绝不入库）
+*.bak
+*.bak-*
+.msc-backup-*/
+cordis.patch.yml.msc-bak-*
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

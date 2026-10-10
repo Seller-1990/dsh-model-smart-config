@@ -1,0 +1,25 @@
+# dsh-model-smart-config —— 本插件自己的 profile 行。
+#
+# 安装时由 plugin manager 的 install_bundle 合并进当前 profile，
+# **不要**手写 profile 的 package.json / cordis.patch.yml。
+#
+# 字段语义见 docs/03-inference-rules.md §6：
+#   enabled             总开关（false 时行内不做任何识别，也不给任何建议）
+#   autoApplyContext    允许把「上下文窗口 / 最大输出」填进官方模型行
+#   autoApplyModality   允许把「输入模态」填进官方模型行
+#   autoApplyReasoning  允许把「思考等级」填进官方模型行
+#   allowProbe          是否显示「测试」按钮（探测**永远**只在手动点击时发生）
+#
+# ⚠️ v0.3.1 起 autoApply* 不再是「敲完 id 就自动填值」的开关，而是**字段级许可**：
+#    自动路径只做识别（刷新徽标），**写值一律由用户点行内「智能匹配」键显式触发**，
+#    且用户手改过的字段永不被覆盖。本插件**从不自己写配置文件** ——
+#    值填进官方表单，由该 API 卡片自己的「保存」落库。
+- insert:
+    - id: model-smart-config
+      name: 'dsh-model-smart-config'
+      config:
+        enabled: true
+        autoApplyContext: true
+        autoApplyModality: true
+        autoApplyReasoning: true
+        allowProbe: true

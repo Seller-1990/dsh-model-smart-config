@@ -1,0 +1,4 @@
+{
+  "title": "Model Smart Config",
+  "description": "Recognises the model name and suggests context window, modalities and reasoning levels — applied to the config in one click."
+}
