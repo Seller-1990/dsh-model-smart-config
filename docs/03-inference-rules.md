@@ -458,7 +458,7 @@ models/gemini-2.5-pro       → 前缀是 `models/`，第 2 步同样覆盖
 export const ALIASES = [
   // [别名正则, 归一到的规范名]
   [/^deepseek-chat$/i,            'deepseek-v4-flash'],   // 官方 chat 端点
-  [/^deepseek-v3(?:\.\d+)?$/i,    'deepseek-v4-flash'],   // 旧版本号别名
+  // 固定历史型号（deepseek-v3 / v3.1 / r1 / coder）不映射到新世代。
   [/^gpt-4o-latest$/i,            'gpt-4o'],
   [/^claude-3-5-sonnet-latest$/i, 'claude-3-5-sonnet'],
   [/^gemini-pro$/i,               'gemini-1.5-pro'],
@@ -487,8 +487,11 @@ export const ALIASES = [
 **默认策略**：注册表命中的值直接填入（用户已指定「按模型公开信息进行判断并填写」），
 但 UI 上保持可编辑，并显示来源标签 `公开信息` / `端点返回` / `未识别`。
 
-**保守规则**：注册表说支持图像、但用户当前配置是纯文本端点时，
-**不静默删除** —— 交给用户确认（避免把能用的能力误关）。
+**保守规则**：点击智能匹配时，规则建议若与已保存的逐模型 `models[].input` /
+`modelOverrides[id].input` 或本次手动勾选冲突，保留用户选择并提示手动确认；
+provider 的默认 `text` 不当作逐模型显式声明。其它可写字段不因此被阻塞。
+禁用的复选框、点击后未保持目标状态的复选框不计为写入成功。
+异步回填还需核验原行、模型 ID、可见草稿与所属模型页仍然有效。
 
 **zcode 的额外能力位**（`supportsVideo` / `supportsAudio` / `supportsPdf`）：
 DSH 的 `input` 表达不了，**只在卡片上作为参考信息展示**（例：「该模型公开信息显示还支持视频/PDF 输入」），
@@ -498,18 +501,23 @@ DSH 的 `input` 表达不了，**只在卡片上作为参考信息展示**（例
 
 ## 5. 思考等级判定（依据：官方文档 / 测试）
 
-按用户给的两种途径，加上官方服务补强，设计成**有序回退**（编号对应 `01-research.md` §5.2 的 S1–S4）：
+独立目录元数据必须携带可信来源，不能把当前配置当成外部事实：
+
+- `msc/authoritative` 保留兼容端点名和返回值，但当前 `resolveModelInfo` 结果标为
+  `source: 'resolved-config'`，仅诊断，不覆盖注册表。它已混合用户配置、目录与默认值，
+  无法据此判断字段究竟来自哪里；缺少来源的旧响应同样不写。
+- 只有明确 `source: 'catalog'` 的独立元数据才作为优先补全；当前宿主未提供此能力证明。
+- S1 内置表采用逐字段来源；S3 仍由用户主动触发；S4 名称启发式只展示候选。
 
 ```
-S2 官方 resolveModelInfo（对 catalog 已知路由最权威）
-   ├─ 有结论 → 采信（数据来自 pi-ai 内置目录，比手写表权威）
-   └─ 无（第三方路由无 catalog 条目）  ↓
-S1 内置规则表（注册表规则合并后的 reasoningEfforts；依据官方文档）
+有来源的独立 catalog 元数据（若接口明确支持）
+   └─ 无该字段                   ↓
+S1 内置规则表（逐字段验证来源）
    ├─ false                     → 写 reasoningEfforts: false（非推理模型）
    ├─ 对象（至少一个非 off 档）  → 写该对象
    └─ undefined（未命中）        ↓
 S3 实测探测（用户点「测试」；默认不自动发）
-   ├─ 能判定                    → 写探测结论
+   ├─ 能判定                    → 给探测结论
    └─ 不能判定                  ↓
 S4 名称启发式（兜底候选，不自动写）
    └─ 按模型名模式给候选档位集合，UI 让用户确认
@@ -597,6 +605,17 @@ export const SITE_RULES = [
 ```
 
 命中顺序：`BASE_RULE ← MODEL_RULES ← SITE_RULES`（站点最具体，最后覆盖）。
+
+### 5.4 字段证据与显式未知
+
+`BASE_RULE` 只作内部默认，不能单独形成可写建议。合并时 `fieldSources` 与
+`fieldEvidence` 逐字段记录规则索引、站点规则索引及文档 URL；另一字段的 `source`
+不能为默认容量或默认文本背书。容量还必须是正的安全整数。
+
+省略字段仍允许合法的分层继承；若已知某型号未公布容量，规则用
+`unknownFields: ['contextWindow', 'maxTokens']` 显式清除继承并标为 `unknown`。
+SenseNova 6.7/6.8 使用此机制。固定历史 DeepSeek 型号不套用新一代 Flash 的容量、模态和档位；
+缺少已核实的专属数据时宁可保留未设置，也不把“厂商识别成功”当作“能力已知”。
 **首版留空**，遇到真实不兼容的站点再补 —— 不预先编造。
 
 ### 5.4 名称启发式（S4 的规则表）

@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-smart-config",
-  "version": "0.3.2",
+  "version": "0.3.3-local.2",
   "description": "Smart model setup for DeepSeek Harness third-party API providers: recognize a model ID and fill in context window, input modalities and reasoning levels.",
   "license": "MIT",
   "type": "module",
@@ -59,7 +59,8 @@
     "react-dom": "^18.3.1"
   },
   "scripts": {
-    "test": "node --test test/rules.test.mjs && node test/render.test.mjs && node test/placement.test.mjs && node test/interaction.test.mjs",
-    "test:rules": "node --test test/rules.test.mjs"
+    "test": "node --test test/rules.test.mjs test/provenance.test.mjs test/host.test.mjs && node test/render.test.mjs && node test/placement.test.mjs && node test/interaction.test.mjs && node test/draft.test.mjs && node test/controlled.test.mjs",
+    "test:rules": "node --test test/rules.test.mjs test/provenance.test.mjs",
+    "test:host-assembly": "node test/host-assembly.test.mjs && node test/readiness.test.mjs"
   }
 }

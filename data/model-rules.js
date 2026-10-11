@@ -432,31 +432,27 @@ export const MODEL_RULES = [
 
   // ──────────────────────────── DeepSeek ────────────────────────────
   {
-    // 官方 2026 口径（pricing 页逐字）：CONTEXT LENGTH 1M / MAX OUTPUT MAXIMUM 384K（= 393216）。
-    // thinking 为双参数并存：thinking.type=enabled|disabled（默认 enabled）+ reasoning_effort=none|low|high|max（默认 high）。
-    // 官方明示 minimal→low、medium/xhigh→high 的兼容映射，故只声明实际四档。
+    // 仅识别厂商；不能把当前在线型号的容量/推理参数回填到所有历史型号。
     match: m('deepseek'),
     displayName: 'DeepSeek', vendor: 'deepseek',
-    contextWindow: 1000000, maxTokens: 393216,
-    input: ['text'],
-    reasoningEfforts: E('low', 'high', 'max'),
-    note: '官方 reasoning_effort = none / low / high / max（默认 high，none 关闭思考）；minimal 映射为 low、medium 与 xhigh 映射为 high。',
     source: 'https://api-docs.deepseek.com/quick_start/pricing',
     generic: true,
   },
   {
     // 纯文本推理线（deepseek-v4-pro 官方 FEATURES 行 Vision: Not supported）
     // 保留 high / max 起点并补 low（官方 reasoning_effort 四档均可用）
-    match: m('deepseek-v4[-.]?pro|deepseek-reasoner|deepseek-r1'),
+    match: m('deepseek-v4[-.]?pro|deepseek-reasoner'),
     displayName: 'DeepSeek 推理模型', vendor: 'deepseek',
+    contextWindow: 1000000, maxTokens: 393216,
     input: ['text'],
     reasoningEfforts: E('low', 'high', 'max'),
     source: 'https://api-docs.deepseek.com/api/create-chat-completion',
   },
   {
     // 多模态主力线（deepseek-flash / DeepSeek-V4.1-Flash 官方 Vision 支持 ✓）
-    match: m('deepseek-flash|deepseek-v4[-.]?flash|deepseek-v4[-.]?1[-.]?flash|deepseek-chat|deepseek-v3'),
+    match: m('deepseek-flash|deepseek-v4[-.]?flash|deepseek-v4[-.]?1[-.]?flash|deepseek-chat'),
     displayName: 'DeepSeek Flash', vendor: 'deepseek',
+    contextWindow: 1000000, maxTokens: 393216,
     input: ['text', 'image'],
     reasoningEfforts: E('low', 'high', 'max'),
     source: 'https://api-docs.deepseek.com/quick_start/pricing',
@@ -1507,10 +1503,11 @@ export const MODEL_RULES = [
   {
     // 6.7 / 6.8 flash-lite：官方未给 ctx/maxOut 数字，只确认原生多模态。
     // ★ 官方预览 id 为 `sensenova-6.8-flash-lite`（endpoint `https://token.sensenova.cn/v1`），6.7 为上一代。
-    match: m('sensenova[-.]?6[-.]?[78]'),
+    match: m('sensenova[-.]?v?6[-.]?[78]'),
     displayName: 'SenseNova Flash Lite', vendor: 'sensenova',
+    unknownFields: ['contextWindow', 'maxTokens'],
     input: ['text', 'image'],
-    note: '官方预览 id 为 `sensenova-6.8-flash-lite`（6.7 为上一代）。官方**明确不公布** ctx/maxOut 数字，故容量继承家族兜底值，不臆造填数。endpoint `https://token.sensenova.cn/v1`。',
+    note: '官方预览 id 为 `sensenova-6.8-flash-lite`（6.7 为上一代）。未公布 ctx/maxOut，保持未设置，不继承旧型号容量。endpoint `https://token.sensenova.cn/v1`。',
     source: 'https://www.sensenova.cn/models',
   },
   {
@@ -2007,9 +2004,8 @@ export const SITE_RULES = [
  * 别名**只改匹配用名，不改显示名**（docs/03 §3.4.1）。
  */
 export const ALIASES = [
+  // 浮动服务名可以跟随服务版本；固定历史型号绝不能映射到新世代。
   [/^deepseek-chat$/, 'deepseek-v4-flash'],
-  [/^deepseek-v3(?:[.]\d+)?$/, 'deepseek-v4-flash'],
-  [/^deepseek-coder$/, 'deepseek-v4-flash'],
   [/^gpt-4o-latest$/, 'gpt-4o'],
   [/^claude-3-5-sonnet-latest$/, 'claude-3-5-sonnet'],
   [/^gemini-pro$/, 'gemini-1.5-pro'],

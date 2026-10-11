@@ -136,9 +136,12 @@ try {
 }
 
 check('注册了 locale 字典', localeRegistrations.length === 1, JSON.stringify(localeRegistrations.map((r) => r.ns)));
-check('注册了 1 个 slot 条目', registrations.length === 1, String(registrations.length));
+check('注册 provider-card 与 footer 两个 slot 条目', registrations.length === 2, String(registrations.length));
+const footer = registrations.find(item => item.options.name === 'settings.models.footer');
+check('footer list 条目有稳定 id', footer?.options?.id === 'model-smart-config-custom-draft');
+check('footer list 条目不声明 keyed key', footer?.options?.key === undefined);
 
-const reg = registrations[0];
+const reg = registrations.find(item => item.options.name === 'settings.models.provider-card');
 check('槽位名 = settings.models.provider-card', reg?.options?.name === 'settings.models.provider-card', reg?.options?.name);
 check('keyed key = llm-pi-ai', reg?.options?.key === 'llm-pi-ai', reg?.options?.key);
 check('keyed 条目不声明 id（官方纪律）', reg?.options?.id === undefined, String(reg?.options?.id));

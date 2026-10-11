@@ -1,5 +1,5 @@
 /**
- * dsh-model-smart-config — Client 半（v0.3.0：行内化 + 新增模型自动匹配）。
+ * dsh-model-smart-config — Client 半（行内识别 + 显式匹配 + 自定义草稿）。
  *
  * ## 槽位与身份
  *
@@ -10,6 +10,9 @@
  * NS = `"llm-pi-ai"`），所以**所有 pi-ai 第三方 provider 共用同一个 key**。
  * → 本插件只注册一条 `key: 'llm-pi-ai'` 的条目，它会为每个 provider 行渲染；
  *   组件从 props 里的 `provider` 知道自己正渲染哪一行。
+ * 新建自定义 API 尚无 provider-card：另注册 `settings.models.footer` list 条目，
+ * 仅增强该槽位所属 section 内唯一可见的 custom-panel，不观察 document/body。
+ * 草稿按模型 ID 识别，不虚构已保存 provider，不读取密码，也不提供真实探测。
  *
  * ## 显示位置（v0.3.0 起：行内）
  *
@@ -60,8 +63,8 @@
  * 本插件的钩子：MutationObserver 盯住 `<details>` 的 `childList`（新行出现）
  * 与 `input` 事件（用户在空行里敲完 id，450ms 防抖）：
  *   · 首次同步时已存在的 id 记入 baseline —— **不自动改写用户原有的模型**；
- *   · 之后出现的 id（新增行 / 采纳候选 / 空行敲完）→ 自动 infer 一次并**填入官方控件**；
- *   · 识别不到就**什么都不填**，只在徽标上标「未识别」——沿用「不静默写错值」口径。
+ *   · 之后出现的 id（新增行 / 采纳候选 / 空行敲完）→ 自动 infer 一次，仅更新识别徽标；
+ *   · 只有用户点击「智能匹配」才写官方草稿；识别不到或证据不足时不填，并解释原因。
  *
  * 三条硬约束（来自官方 skill 的 practices/ui-plugin）：
  *   ① 只用主题 token `--dsw-alias-*`，不 require 任何 Harness Client 包；
@@ -218,7 +221,23 @@ window.__ModuleLoader__.load({
       inlineAutoPartial: '部分未填入：',
       inlineNoFields: '没找到官方「上下文/最大输出/思考等级」字段',
       inlineNoModality: '没找到官方图像开关',
+      inlineModalityConflict: '已保留已有视觉声明；如需采用建议，请手动确认视觉开关',
+      inlineModalityDisabled: '视觉开关不可编辑，未填入',
+      inlineModalityRejected: '视觉开关未接受更改，未标记成功',
+      inlineModalityAlready: '视觉开关已符合建议，无需改动',
+      inlineModalityOverridden: '视觉开关已按规则表更新（覆盖了配置里的声明）',
+      inlineModalityFromCandidate: '视觉开关按候选建议更新（规则表未给出确定结论）',
+      inlineModalityCandidate: '视觉开关未改动：规则表只给出候选，需你手动确认',
+      inlineModalityNoSuggestion: '视觉开关未改动：规则表没有视觉结论',
+      inlineModalityConfigOff: '视觉开关未改动：自动填入视觉已关闭',
+      inlineRowInactive: '该行已不在当前编辑区；请展开该提供商的「自定义」后再点智能匹配',
+      inlineRowChanged: '该行在匹配过程中发生变化，未填入；请重新点击智能匹配',
+      inlineFieldDisabled: '字段不可编辑，未填入',
+      inlineFieldRejected: '字段未接受更改，未标记成功',
       inlineNeedSave: '填入后按官方「保存」才生效',
+      inlineLoadingSettings: '正在读取配置，确认已有声明后再匹配…',
+      inlineSettingsFailed: '配置读取失败，未填入；请再次点击智能匹配重试',
+      inlineSettingsDisabled: '智能配置已禁用，未填入',
       inlineProbeHint: '测试会向端点发真实请求（每次约 16 token），只在点击时发生。',
       inlineMatch: '智能匹配',
       inlineMatching: '匹配中…',
@@ -270,7 +289,23 @@ window.__ModuleLoader__.load({
       inlineAutoPartial: 'Not filled: ',
       inlineNoFields: 'official context / max-output / reasoning fields not found',
       inlineNoModality: 'official image toggle not found',
+      inlineModalityConflict: 'existing vision choice kept; confirm the vision checkbox manually to adopt the suggestion',
+      inlineModalityDisabled: 'vision control is disabled; not filled',
+      inlineModalityRejected: 'vision control did not accept the change; not marked successful',
+      inlineModalityAlready: 'vision checkbox already matched the suggestion',
+      inlineModalityOverridden: 'vision checkbox updated from the rules table (your saved declaration was overridden)',
+      inlineModalityFromCandidate: 'vision checkbox updated from a candidate suggestion (no definite answer in the rules table)',
+      inlineModalityCandidate: 'vision checkbox unchanged: the rules table only offers a candidate',
+      inlineModalityNoSuggestion: 'vision checkbox unchanged: the rules table has no vision answer',
+      inlineModalityConfigOff: 'vision checkbox unchanged: automatic vision fill is off',
+      inlineRowInactive: 'this row is no longer in the editing area; expand the provider "Customized" section and match again',
+      inlineRowChanged: 'this row changed while matching; nothing was filled — match again',
+      inlineFieldDisabled: 'field is not editable; not filled',
+      inlineFieldRejected: 'field did not accept the change; not marked successful',
       inlineNeedSave: 'press the official Save to persist',
+      inlineLoadingSettings: 'Reading settings before applying suggestions…',
+      inlineSettingsFailed: 'Could not read settings; nothing was filled. Press Smart match to retry.',
+      inlineSettingsDisabled: 'Smart configuration is disabled; nothing was filled.',
       inlineProbeHint: 'A probe sends real requests to your endpoint (about 16 tokens each) and only runs when you click.',
       inlineMatch: 'Smart match',
       inlineMatching: 'Matching…',
@@ -309,13 +344,14 @@ window.__ModuleLoader__.load({
     }
 
     function confidenceLabel(t, confidence) {
+      if (confidence === 'catalog') return t('sourceAuthoritative');
       if (confidence === 'exact') return t('confidenceExact');
       if (confidence === 'pattern') return t('confidencePattern');
       return t('confidenceNone');
     }
 
     function confidenceTone(confidence) {
-      if (confidence === 'exact') return 'Success';
+      if (confidence === 'exact' || confidence === 'catalog') return 'Success';
       if (confidence === 'pattern') return 'Info';
       return 'Warn';
     }
@@ -450,7 +486,7 @@ window.__ModuleLoader__.load({
       /** 读本插件自己的配置（Host 半 `Config` 的 volatile 字段）。 */
       function readConfig() {
         return remote.settings.describe().then(function (response) {
-          if (!response || response.ok !== true) return {};
+          if (!response || response.ok !== true) throw new Error('settings.describe failed');
           var namespaces = response.value && response.value.namespaces ? response.value.namespaces : [];
           for (var i = 0; i < namespaces.length; i += 1) {
             if (namespaces[i].ns === ENTRY_ID) return namespaces[i].value || {};
@@ -475,7 +511,8 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 组合：S2 官方目录优先，其次 S1 内置规则表。
+     * 按字段合并有来源的能力：可信内置模态优先；官方 catalog 补充其它字段。
+     * 已保存的 resolved/user override 不是独立能力证据。
      *
      * ⚠️ **每项的 `sources` 必须逐字段透传 Host 半的判定**，不能按「有没有官方
      * 目录」一刀切：内置表里 S4 名称启发式给出的模态候选，来源是 `heuristic`
@@ -483,24 +520,31 @@ window.__ModuleLoader__.load({
      * 正是「不静默写错值」要防的误导。
      */
     function combine(registry, authoritative) {
-      var hasAuth = authoritative && authoritative.found === true;
+      registry = registry || { confidence: 'none', sources: {} };
+      // Resolved configuration (and legacy replies without provenance) can
+      // contain defaults/user overrides, not independent capability evidence.
+      var hasAuth = authoritative && authoritative.found === true && authoritative.source === 'catalog';
       var authCtx = hasAuth ? authoritative.contextWindow : undefined;
       var authMax = hasAuth ? authoritative.defaultMaxTokens : undefined;
       var authInput = hasAuth ? authoritative.inputModalities : undefined;
       var authEfforts = hasAuth ? authoritative.reasoningEfforts : undefined;
-
-      var contextWindow = pick(authCtx, registry.contextWindow);
-      var maxTokens = pick(authMax, registry.maxTokens);
-      var input = pick(authInput, registry.input);
-      var reasoningEfforts = pick(authEfforts, registry.reasoningEfforts);
-      var regSources = registry.sources || {};
+      var local = registry.confidence === 'none' ? {} : registry;
+      var contextWindow = pick(authCtx, local.contextWindow);
+      var maxTokens = pick(authMax, local.maxTokens);
+      // Public modality rules take precedence; conflicts with explicit user
+      // declarations are handled at the form write boundary, never here.
+      var regSources = local.sources || {};
+      var localInput = isWritableSource(regSources.input) ? local.input : undefined;
+      var input = pick(localInput, authInput, local.input);
+      var reasoningEfforts = pick(authEfforts, local.reasoningEfforts);
+      var catalogEvidence = authCtx !== undefined || authMax !== undefined || authInput !== undefined || authEfforts !== undefined;
 
       return {
         vendor: registry.vendor,
         displayName: registry.displayName,
         normalized: registry.normalized,
         alias: registry.alias,
-        confidence: registry.confidence,
+        confidence: registry.confidence === 'none' && catalogEvidence ? 'catalog' : registry.confidence,
         warnings: registry.warnings || [],
         notes: registry.notes || {},
         source: registry.source,
@@ -513,30 +557,10 @@ window.__ModuleLoader__.load({
         // S4 启发式候选：只在没有任何权威结论时才展示，仅提示不写库。
         reasoningSuggestion: authEfforts !== undefined ? undefined : registry.reasoningSuggestion,
         sources: {
-          contextWindow:
-            authCtx !== undefined
-              ? 'authoritative'
-              : contextWindow !== undefined
-                ? regSources.contextWindow || 'registry'
-                : 'unknown',
-          maxTokens:
-            authMax !== undefined
-              ? 'authoritative'
-              : maxTokens !== undefined
-                ? regSources.maxTokens || 'registry'
-                : 'unknown',
-          input:
-            authInput !== undefined
-              ? 'authoritative'
-              : input !== undefined
-                ? regSources.input || 'registry'
-                : 'unknown',
-          reasoningEfforts:
-            authEfforts !== undefined
-              ? 'authoritative'
-              : reasoningEfforts !== undefined
-                ? regSources.reasoningEfforts || 'registry'
-                : 'unknown',
+          contextWindow: authCtx !== undefined ? 'authoritative' : regSources.contextWindow || 'unknown',
+          maxTokens: authMax !== undefined ? 'authoritative' : regSources.maxTokens || 'unknown',
+          input: localInput !== undefined ? regSources.input : authInput !== undefined ? 'authoritative' : regSources.input || 'unknown',
+          reasoningEfforts: authEfforts !== undefined ? 'authoritative' : regSources.reasoningEfforts || 'unknown',
         },
       };
     }
@@ -574,6 +598,66 @@ window.__ModuleLoader__.load({
         if (row) return row;
       }
       return anchor.parentNode;
+    }
+
+    /** Footer is a real host-owned slot; never climb into document/body. */
+    function findDraftSection(anchor) {
+      var slot = anchor && anchor.closest('[data-slot="settings.models.footer"]');
+      var section = slot && slot.parentElement;
+      if (!section || section.tagName === 'BODY' || section.tagName === 'HTML') return null;
+      return section;
+    }
+
+    /** Fail closed if the host shape is ambiguous or the custom mode is hidden. */
+    function findCustomDraftRoot(section) {
+      if (!section || !section.isConnected) return null;
+      var panels = section.querySelectorAll('[id$="-custom-panel"]');
+      var found = null;
+      for (var i = 0; i < panels.length; i += 1) {
+        var panel = panels[i];
+        var addCard = panel.parentElement;
+        var addBlock = addCard && addCard.parentElement;
+        // Actual host: section > addBlock > addCard > custom-panel.
+        if (!addBlock || addBlock.parentElement !== section || panel.closest('[hidden]')) continue;
+        if (found) return null;
+        found = panel;
+      }
+      return found;
+    }
+
+    /** Observe only our section; row work is delegated to the one live draft. */
+    function CustomDraftSmartConfig(props) {
+      var anchorRef = React.useRef(null);
+      var state = React.useState(null);
+      var current = state[0];
+      var setCurrent = state[1];
+      React.useEffect(function () {
+        var section = findDraftSection(anchorRef.current);
+        var Observer = typeof MutationObserver === 'function' ? MutationObserver : null;
+        if (!section || !Observer) return undefined;
+        var disposed = false;
+        var generation = 0;
+        function syncDraft() {
+          if (disposed) return;
+          var root = findCustomDraftRoot(section);
+          setCurrent(function (previous) {
+            if (previous && previous.root === root) return previous;
+            if (!previous && !root) return previous;
+            generation += 1;
+            return root ? { root: root, section: section, generation: generation } : null;
+          });
+        }
+        var observer = new Observer(syncDraft);
+        observer.observe(section, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+        syncDraft();
+        return function () { disposed = true; observer.disconnect(); };
+      }, []);
+      return h(React.Fragment, null,
+        h('span', { ref: anchorRef, 'data-msc-draft-anchor': '', style: { display: 'none' } }),
+        current ? h(ModelSmartConfigInline, {
+          key: current.generation, api: props.api, t: props.t,
+          draftRoot: current.root, draftSection: current.section,
+        }) : null);
     }
 
     /** 行容器（`div.modelRow`）由官方行锚点反查：compact toggle 的直接父节点。 */
@@ -718,13 +802,34 @@ window.__ModuleLoader__.load({
      *
      * 失败必须说出来 —— 点了键却默默什么都不发生，正是用户报的「没反应」。
      */
+    /**
+     * 视觉开关这次到底发生了什么 —— 无论成功还是没动，都要说出来。
+     *
+     * 用户报的「点了智能匹配，视觉勾选框没反应」正是这一段缺失导致的：开关
+     * 已经是对的、或规则表根本没有视觉结论时，以前一个字都不提示，界面看起来
+     * 和「功能坏了」完全一样。
+     */
+    function modalityNote(t, outcome) {
+      var state = outcome.modality;
+      if (state === 'already') return t('inlineModalityAlready');
+      if (state === 'overridden-declared') return t('inlineModalityOverridden');
+      if (state === 'applied-candidate') return t('inlineModalityFromCandidate');
+      if (state === 'no-suggestion') return t('inlineModalityNoSuggestion');
+      if (state === 'config-off') return t('inlineModalityConfigOff');
+      if (state === 'kept-manual' || state === 'kept-declared') return '';
+      if (typeof state === 'string' && state.indexOf('candidate:') === 0) return t('inlineModalityCandidate');
+      return '';
+    }
+
     function outcomeNote(t, outcome, doneKey) {
-      if (outcome.problems.length > 0) return t('inlineAutoPartial') + outcome.problems.join('；');
-      if (outcome.touched.length > 0 && outcome.applied.length === 0) return t('inlineEdited');
+      var extra = modalityNote(t, outcome);
+      function withExtra(text) { return extra ? text + ' · ' + extra : text; }
+      if (outcome.problems.length > 0) return withExtra(t('inlineAutoPartial') + outcome.problems.join('；'));
+      if (outcome.touched.length > 0 && outcome.applied.length === 0) return withExtra(t('inlineEdited'));
       if (outcome.touched.length > 0) {
-        return t(doneKey) + ' · ' + t('inlineEdited') + '（' + outcome.touched.join('、') + '）';
+        return withExtra(t(doneKey) + ' · ' + t('inlineEdited') + '（' + outcome.touched.join('、') + '）');
       }
-      return t(doneKey);
+      return withExtra(t(doneKey));
     }
 
     /**
@@ -743,39 +848,96 @@ window.__ModuleLoader__.load({
      * 返回 `{applied, problems}`：填入成功的字段名，以及**没能填入的原因** ——
      * 失败必须说出来，不能静默当成功。
      */
+    function savedModelInput(profile, id) {
+      var models = profile && Array.isArray(profile.models) ? profile.models : [];
+      var model = models.find(function (entry) { return entry.id === id; });
+      var override = profile && profile.modelOverrides ? profile.modelOverrides[id] : undefined;
+      var declaration = model || override;
+      return declaration && Array.isArray(declaration.input) && declaration.input.length > 0 ? declaration.input : undefined;
+    }
+
+    function fillModality(rowEl, spec, config, t, options, outcome) {
+      if (options && options.isCurrent && !options.isCurrent()) return Promise.resolve();
+      if (config.autoApplyModality === false) { outcome.modality = 'config-off'; return Promise.resolve(); }
+      if (!Array.isArray(spec.input)) { outcome.modality = 'no-suggestion'; return Promise.resolve(); }
+      var source = (spec.sources || {}).input;
+      // 显式点击「智能匹配」= 用户要求按规则表落地，此时候选来源也允许写入（会明确告知）。
+      var force = options && options.force === true;
+      var writable = isWritableSource(source);
+      if (!writable && !force) { outcome.modality = 'candidate:' + source; return Promise.resolve(); }
+      var toggle = rowEl.querySelector(ROW_TOGGLE_SELECTOR);
+      var box = toggle ? toggle.querySelector('input[type="checkbox"]') : null;
+      if (!box) { outcome.problems.push(t('inlineNoModality')); outcome.modality = 'no-toggle'; return Promise.resolve(); }
+      var wantImage = spec.input.indexOf('image') >= 0;
+      if (box.checked === wantImage) { outcome.modality = 'already'; return Promise.resolve(); }
+      var touched = options && options.touched && options.touched.has(box);
+      var declared = options && options.savedInput;
+      var declaredDiffers = Array.isArray(declared) && (declared.indexOf('image') >= 0) !== wantImage;
+      // 本次会话里用户亲手拨过这个开关 —— 那是最新的人类意图，自动填充永远不覆盖它。
+      if (touched) {
+        outcome.touched.push('input');
+        outcome.problems.push(t('inlineModalityConflict'));
+        outcome.modality = 'kept-manual';
+        return Promise.resolve();
+      }
+      // 只有「显式点击」才允许覆盖已保存声明；后台自动匹配不会走到这里。
+      if (declaredDiffers && !force) {
+        outcome.touched.push('input');
+        outcome.problems.push(t('inlineModalityConflict'));
+        outcome.modality = 'kept-declared';
+        return Promise.resolve();
+      }
+      if (box.disabled) { outcome.problems.push(t('inlineModalityDisabled')); outcome.modality = 'disabled'; return Promise.resolve(); }
+      outcome.modality = declaredDiffers ? 'overridden-declared' : (writable ? 'applied' : 'applied-candidate');
+      clickCheckbox(box);
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          if (!box.isConnected || (options && options.isCurrent && !options.isCurrent())) {
+            outcome.modality = 'stale';
+            outcome.problems.push(t('inlineModalityRejected'));
+            resolve();
+            return;
+          }
+          if (box.checked !== wantImage) {
+            outcome.modality = 'rejected';
+            outcome.problems.push(t('inlineModalityRejected'));
+            resolve();
+            return;
+          }
+          outcome.applied.push('input');
+          resolve();
+        }, 0);
+      });
+    }
+
     function fillOfficialRow(rowEl, spec, config, t, options) {
-      var outcome = { applied: [], problems: [], touched: [] };
+      var outcome = { applied: [], problems: [], touched: [], modality: 'unset' };
       var sources = spec.sources || {};
       /**
        * 「用户手改保护」：`options.touched` 是**本行已被用户手动编辑过的控件集合**。
        * 属于它的字段一律跳过 —— 这正是用户报「填写后不能手动修改」的根治点：
        * 插件绝不覆盖用户亲手给的值。
        *
-       * 用户显式点「智能匹配」时传 `options.force = true`（先清保护再填），
-       * 那是明确的覆盖意图，不算抢写。
+       * 用户显式点「智能匹配」时 `options.force = true` 仅刷新数值/推理建议；
+       * 视觉使用独立冲突保护，不会因这次点击清除手改或已保存声明。
        */
       var guard = options && options.force !== true && options.touched ? options.touched : null;
       function blocked(el) {
         return guard !== null && el ? guard.has(el) === true : false;
       }
+      function isCurrent() { return !options || !options.isCurrent || options.isCurrent(); }
+      function writeField(el, value, key) {
+        if (!isCurrent()) return;
+        if (el.disabled || el.readOnly) { outcome.problems.push(t('inlineFieldDisabled')); return; }
+        nativeSetInput(el, value);
+        if (el.value === value) outcome.applied.push(key);
+        else outcome.problems.push(t('inlineFieldRejected'));
+      }
 
       // 总开关关掉时，任何字段都不写 —— 单点闸门，覆盖自动与手动两条路径。
-      if (config.enabled === false) return Promise.resolve(outcome);
+      if (config.enabled === false || !isCurrent()) return Promise.resolve(outcome);
 
-      // ① 行内模态开关：永远在行里，不需要展开。
-      if (config.autoApplyModality !== false && spec.input !== undefined && isWritableSource(sources.input)) {
-        var toggle = rowEl.querySelector(ROW_TOGGLE_SELECTOR);
-        var box = toggle ? toggle.querySelector('input[type="checkbox"]') : null;
-        if (!box) {
-          outcome.problems.push(t('inlineNoModality'));
-        } else if (blocked(box)) {
-          outcome.touched.push('input');
-        } else {
-          var wantImage = spec.input.indexOf('image') >= 0;
-          if (box.checked !== wantImage) clickCheckbox(box);
-          outcome.applied.push('input');
-        }
-      }
+      var modalityDone = fillModality(rowEl, spec, config, t, options, outcome);
 
       var wantContext =
         config.autoApplyContext !== false && spec.contextWindow !== undefined && isWritableSource(sources.contextWindow);
@@ -785,9 +947,10 @@ window.__ModuleLoader__.load({
         spec.reasoningEfforts !== undefined &&
         isWritableSource(sources.reasoningEfforts);
 
-      if (!wantContext && !wantMax && !wantReasoning) return Promise.resolve(outcome);
+      if (!wantContext && !wantMax && !wantReasoning) return modalityDone.then(function () { return outcome; });
 
-      return expandRow(rowEl).then(function () {
+      return modalityDone.then(function () { return isCurrent() ? expandRow(rowEl) : false; }).then(function () {
+        if (!isCurrent()) return outcome;
         var advanced = findAdvancedRow(rowEl);
         if (!advanced) {
           outcome.problems.push(t('inlineNoFields'));
@@ -805,16 +968,14 @@ window.__ModuleLoader__.load({
           if (!capacities[0]) outcome.problems.push(t('inlineNoFields'));
           else if (blocked(capacities[0])) outcome.touched.push('contextWindow');
           else {
-            nativeSetInput(capacities[0], formatCapacity(spec.contextWindow));
-            outcome.applied.push('contextWindow');
+            writeField(capacities[0], formatCapacity(spec.contextWindow), 'contextWindow');
           }
         }
         if (wantMax) {
           if (!capacities[1]) outcome.problems.push(t('inlineNoFields'));
           else if (blocked(capacities[1])) outcome.touched.push('maxTokens');
           else {
-            nativeSetInput(capacities[1], formatCapacity(spec.maxTokens));
-            outcome.applied.push('maxTokens');
+            writeField(capacities[1], formatCapacity(spec.maxTokens), 'maxTokens');
           }
         }
         if (wantReasoning) {
@@ -829,8 +990,7 @@ window.__ModuleLoader__.load({
                       return level !== 'off';
                     })
                     .join(', ');
-            nativeSetInput(reasoningInput, text);
-            outcome.applied.push('reasoningEfforts');
+            writeField(reasoningInput, text, 'reasoningEfforts');
           }
         }
         return outcome;
@@ -996,8 +1156,14 @@ window.__ModuleLoader__.load({
      *
      * 于是「一个模型一行」，不再有上下堆叠的整块面板。
      */
+    // A tab hides an existing draft root; Cancel removes it. Weak ownership
+    // keeps explicit choices across temporary unmounts, not across new drafts.
+    var draftTouchedFields = new WeakMap();
+
     function ModelSmartConfigInline(props) {
       var provider = props.provider;
+      var draftRoot = props.draftRoot || null;
+      var draftSection = props.draftSection || null;
       var api = props.api;
       var t =
         props.t ||
@@ -1007,6 +1173,21 @@ window.__ModuleLoader__.load({
 
       var route = provider && typeof provider.provider === 'string' ? provider.provider : '';
       var anchorRef = React.useRef(null);
+      var lifetime = React.useMemo(function () { return { active: false }; }, [api, route, draftRoot]);
+
+      React.useEffect(function () {
+        lifetime.active = true;
+        return function () { lifetime.active = false; };
+      }, [lifetime]);
+
+      function isActiveRow(rowEl) {
+        if (!lifetime.active || !rowEl || !rowEl.isConnected) return false;
+        if (draftRoot) return findCustomDraftRoot(draftSection) === draftRoot && draftRoot.contains(rowEl);
+        var anchor = anchorRef.current;
+        var card = anchor && findWatchRoot(anchor);
+        var details = card && card.querySelector(CATALOG_DETAILS_SELECTOR + '[open]');
+        return !!details && details.contains(rowEl) && !rowEl.closest('[hidden]');
+      }
 
       var configState = React.useState({});
       var config = configState[0];
@@ -1047,12 +1228,18 @@ window.__ModuleLoader__.load({
       var matchingState = React.useState({});
       var matching = matchingState[0];
       var setMatching = matchingState[1];
+      React.useEffect(function () { setMatching({}); }, [lifetime]);
 
       // 观察者回调跑在 effect 闭包里，需要拿到最新值 —— 一律走 ref，避免重挂观察者。
       var configRef = React.useRef(config);
       configRef.current = config;
       var profileRef = React.useRef(profile);
       profileRef.current = profile;
+      // A failed or pending read is not evidence that no explicit choice exists.
+      // Bind readiness to the same lifetime as the rows, never to a prior route.
+      var settingsLoad = React.useMemo(function () {
+        return { status: 'idle', promise: null, config: {}, profile: {} };
+      }, [lifetime]);
       var specsRef = React.useRef(specs);
       specsRef.current = specs;
 
@@ -1066,20 +1253,21 @@ window.__ModuleLoader__.load({
        * 粒度是「控件」而不是「整行」：用户在思考等级上手改过，插件仍可以继续
        * 维护上下文，不会因为一处手改就把整行冻死。
        *
-       * 想重新填？用户自己点「智能匹配」键 —— 显式点击即覆盖意图，会先清掉本行
-       * 的保护再填（这正是用户要的「点一下自动填」）。
+       * 想重新填？用户自己点「智能匹配」键可更新数值与推理建议；
+       * 视觉手改保护继续保留，能力规则不能覆盖用户明确声明。
        *
-       * 存在 ref 里而不是 effect 闭包里：观察者可能重挂，保护状态必须活得比它久。
+       * 用弱引用按编辑所有者保存：观察者重挂不清除，同一草稿切换标签仍保留。
        */
-      var touchedRef = React.useRef(null);
-      if (touchedRef.current === null) touchedRef.current = { rows: new Set(), fields: new Map() };
-      var touchedRows = touchedRef.current.rows;
-      var touchedFields = touchedRef.current.fields;
+      var touchedFields = React.useMemo(function () {
+        if (draftRoot && draftTouchedFields.has(draftRoot)) return draftTouchedFields.get(draftRoot);
+        var fields = new WeakMap();
+        if (draftRoot) draftTouchedFields.set(draftRoot, fields);
+        return fields;
+      }, [lifetime]);
 
       /** 登记「用户手改了本行的某个控件」。 */
       function markTouched(rowEl, el) {
         if (!rowEl) return;
-        touchedRows.add(rowEl);
         var set = touchedFields.get(rowEl);
         if (!set) {
           set = new Set();
@@ -1091,13 +1279,6 @@ window.__ModuleLoader__.load({
       /** 本行被用户手改过的控件集合（可能为空）。 */
       function rowTouchedFields(rowEl) {
         return touchedFields.get(rowEl) || null;
-      }
-
-      /** 清掉本行的手改保护（显式点「智能匹配」时调用）。 */
-      function clearTouched(rowEl) {
-        if (!rowEl) return;
-        touchedRows.delete(rowEl);
-        touchedFields.delete(rowEl);
       }
 
       function putSpec(id, spec) {
@@ -1137,12 +1318,13 @@ window.__ModuleLoader__.load({
               .catch(function () {
                 return null;
               }),
-            api
+            draftRoot || !route ? Promise.resolve(null) : api
               .authoritative({ provider: route, model: id })
               .catch(function () {
                 return null;
               }),
           ]).then(function (pairs) {
+            if (!lifetime.active || (draftRoot && findCustomDraftRoot(draftSection) !== draftRoot)) return null;
             var spec = pairs[0] ? combine(pairs[0], pairs[1]) : null;
             putSpec(id, spec);
             // 识别结论换了 → 上一次的「已填入 / 已手改」记号不再成立，清掉。
@@ -1151,43 +1333,50 @@ window.__ModuleLoader__.load({
             return spec;
           });
         },
-        [api, route],
+        [api, route, draftRoot, draftSection, lifetime],
       );
 
       /* ---- 读自己的配置与 provider 档案 ---- */
 
-      React.useEffect(
-        function () {
-          var cancelled = false;
-          api
-            .readConfig()
-            .then(function (value) {
-              if (!cancelled) setConfig(value || {});
-            })
-            .catch(function () {});
-          if (route) {
-            api
-              .readProvider(route)
-              .then(function (snapshot) {
-                if (!cancelled) setProfile((snapshot && snapshot.profile) || {});
-              })
-              .catch(function () {});
-          }
-          return function () {
-            cancelled = true;
-          };
-        },
-        [api, route],
-      );
+      var loadSettings = React.useCallback(function () {
+        // Coalesce only pending reads. Every later match re-reads settings:
+        // the provider slot outlives the host's Save / Edit form sessions.
+        if (settingsLoad.promise) return settingsLoad.promise;
+        settingsLoad.status = 'loading';
+        settingsLoad.promise = Promise.all([
+          Promise.resolve().then(function () { return api.readConfig(); }),
+          route ? Promise.resolve().then(function () { return api.readProvider(route); }) : Promise.resolve(null),
+        ]).then(function (values) {
+          if (!lifetime.active) throw new Error('inactive settings read');
+          settingsLoad.config = values[0] || {};
+          settingsLoad.profile = (values[1] && values[1].profile) || {};
+          settingsLoad.status = 'ready';
+          settingsLoad.promise = null;
+          configRef.current = settingsLoad.config;
+          profileRef.current = settingsLoad.profile;
+          setConfig(settingsLoad.config);
+          setProfile(settingsLoad.profile);
+          return settingsLoad;
+        }).catch(function (error) {
+          settingsLoad.status = 'error';
+          settingsLoad.promise = null;
+          throw error;
+        });
+        return settingsLoad.promise;
+      }, [api, route, lifetime, settingsLoad]);
+
+      React.useEffect(function () {
+        loadSettings().catch(function () {});
+      }, [loadSettings]);
 
       /* ---- 观察官方模型行：挂容器 + 新增模型自动匹配 ---- */
 
       React.useEffect(
         function () {
-          if (!provider) return undefined;
+          if (!provider && !draftRoot) return undefined;
           var anchor = anchorRef.current;
           if (!anchor || typeof anchor.closest !== 'function') return undefined;
-          var card = findWatchRoot(anchor);
+          var card = draftRoot || findWatchRoot(anchor);
           if (!card) return undefined;
           var doc = anchor.ownerDocument || (typeof document === 'undefined' ? null : document);
           if (!doc) return undefined;
@@ -1219,7 +1408,7 @@ window.__ModuleLoader__.load({
           var baselineDone = false;
           /** 新行 → 最近一次自动匹配用的 id，用来判断「用户改过 id，需要重匹配」。 */
           var autoDone = new Map();
-          // `touchedRows` / `touchedFields` 来自组件层 ref（见 `touchedRef`），
+          // `touchedFields` 由编辑所有者持有，不由观察者生命周期管理，
           // 这样观察者重挂、编辑器收起再展开，用户的手改保护都不会丢。
           var timers = new Map(); // rowEl -> timeoutId
           var disposed = false;
@@ -1229,8 +1418,8 @@ window.__ModuleLoader__.load({
             if (container && container.parentNode) container.parentNode.removeChild(container);
             attached.delete(rowEl);
             autoDone.delete(rowEl);
-            touchedRows.delete(rowEl);
-            touchedFields.delete(rowEl);
+            // Weak row keys retain choices while collapsed, without retaining
+            // removed DOM rows. A new route/draft uses a different owner.
             // 插件撤走 → 行网格还原成官方原样，不留痕迹。
             unwidenRow(rowEl);
             var timer = timers.get(rowEl);
@@ -1253,7 +1442,9 @@ window.__ModuleLoader__.load({
           /** 兼容旧名：对外只暴露「只读识别」语义，写值已收敛到 `matchRow`。 */
           function sync() {
             if (disposed) return;
-            var details = card.querySelector(CATALOG_DETAILS_SELECTOR + '[open]');
+            var details = draftRoot
+              ? (findCustomDraftRoot(draftSection) === draftRoot ? draftRoot : null)
+              : card.querySelector(CATALOG_DETAILS_SELECTOR + '[open]');
             if (!details) {
               if (attached.size > 0) detachAll();
               return;
@@ -1313,7 +1504,7 @@ window.__ModuleLoader__.load({
               if (previous.length === next.length) {
                 var same = true;
                 for (var j = 0; j < next.length; j += 1) {
-                  if (previous[j].el !== next[j].el || previous[j].id !== next[j].id) {
+                  if (previous[j].el !== next[j].el || previous[j].id !== next[j].id || previous[j].container !== next[j].container) {
                     same = false;
                     break;
                   }
@@ -1342,7 +1533,9 @@ window.__ModuleLoader__.load({
            */
           function refreshRows() {
             if (disposed) return;
-            var details = card.querySelector(CATALOG_DETAILS_SELECTOR + '[open]');
+            var details = draftRoot
+              ? (findCustomDraftRoot(draftSection) === draftRoot ? draftRoot : null)
+              : card.querySelector(CATALOG_DETAILS_SELECTOR + '[open]');
             if (!details) return;
             var found = findRowElements(details);
             var next = [];
@@ -1431,8 +1624,8 @@ window.__ModuleLoader__.load({
             disposed = true;
             observer.disconnect();
             card.removeEventListener('input', onCardInput, true);
-            attached.forEach(function (container) {
-              if (container.parentNode) container.parentNode.removeChild(container);
+            attached.forEach(function (_container, rowEl) {
+              dropRow(rowEl);
             });
             attached.clear();
             timers.forEach(function (id) {
@@ -1441,7 +1634,7 @@ window.__ModuleLoader__.load({
             timers.clear();
           };
         },
-        [provider, detect, t],
+        [provider, draftRoot, draftSection, detect, t],
       );
 
       /* ---- 探测（用户显式点击才发生） ---- */
@@ -1510,10 +1703,16 @@ window.__ModuleLoader__.load({
        * 用户前面写值，用户改完再动一下 id 就被静默覆盖 —— 那正是报障第二条。
        *
        * 与识别（badge）分工：识别随时可发生（只读，不动用户任何值）；
-       * 写入只发生在这一次点击里，且先清掉本行手改保护（点击＝覆盖意图）。
+       * 写入只发生在这一次点击里；数值与推理建议可重新填写，视觉也按规则表落地
+       * —— 显式点击允许覆盖已保存声明，但本次会话里用户亲手拨过的开关永远优先。
        */
       function matchRow(rowEl, key) {
-        if (!rowEl) return Promise.resolve();
+        if (!isActiveRow(rowEl)) {
+          // 点了却什么都不做是最糟的反馈：行不在当前编辑区时必须说出来。
+          putNote(key, t('inlineRowInactive'));
+          putMark(key, undefined);
+          return Promise.resolve();
+        }
         var id = readRowId(rowEl);
         if (!id) {
           // 空行点了键：必须说出原因，不能像没反应。
@@ -1521,20 +1720,35 @@ window.__ModuleLoader__.load({
           putMark(key, undefined);
           return Promise.resolve();
         }
-        clearTouched(rowEl);
+        // 显式点击 = 「按规则表落地」的授权：允许覆盖已保存的视觉声明；
+        // 但本次会话里用户亲手拨过的开关仍优先（见 fillModality 的 touched 分支）。
+        // 手改记录要跨异步查找保留；其余字段继续 force=true，便于重新刷新建议。
         setMatching(function (previous) {
           var next = Object.assign({}, previous);
           next[key] = true;
           return next;
         });
         function settle() {
+          if (!lifetime.active) return;
           setMatching(function (previous) {
             var next = Object.assign({}, previous);
             delete next[key];
             return next;
           });
         }
-        return detect(id)
+        if (settingsLoad.status !== 'ready') putNote(key, t('inlineLoadingSettings'));
+        return loadSettings().then(function (settings) {
+          if (!isActiveRow(rowEl) || readRowId(rowEl) !== id) {
+            putNote(key, t('inlineRowChanged'));
+            putMark(key, undefined);
+            return undefined;
+          }
+          if (settings.config.enabled === false) {
+            putNote(id, t('inlineSettingsDisabled'));
+            putMark(id, undefined);
+            return undefined;
+          }
+          return detect(id)
           .then(function (spec) {
             if (!spec) {
               putNote(id, t('failed'));
@@ -1547,16 +1761,28 @@ window.__ModuleLoader__.load({
               return undefined;
             }
             // 点击期间行可能被删/改了 id，填之前复核。
-            if (!rowEl.parentNode || readRowId(rowEl) !== id) return undefined;
-            return fillOfficialRow(rowEl, spec, configRef.current, t, { force: true }).then(function (outcome) {
+            if (!isActiveRow(rowEl) || readRowId(rowEl) !== id) {
+              putNote(key, t('inlineRowChanged'));
+              putMark(key, undefined);
+              return undefined;
+            }
+            return fillOfficialRow(rowEl, spec, settings.config, t, {
+              force: true,
+              touched: rowTouchedFields(rowEl),
+              savedInput: savedModelInput(settings.profile, id),
+              isCurrent: function () { return isActiveRow(rowEl) && readRowId(rowEl) === id; },
+            }).then(function (outcome) {
+              if (!isActiveRow(rowEl) || readRowId(rowEl) !== id) return undefined;
               putNote(id, outcomeNote(t, outcome, 'inlineMatched') + ' · ' + t('inlineNeedSave'));
               // 真填进去了才挂 ✓；一个字段都没填就别装作成功。
               putMark(id, outcome.applied.length > 0 ? 'applied' : undefined);
               return undefined;
             });
-          })
+          });
+        })
           .catch(function (error) {
-            putNote(id, error && error.message ? error.message : String(error));
+            if (!isActiveRow(rowEl) || readRowId(rowEl) !== id) return;
+            putNote(id, settingsLoad.status === 'error' ? t('inlineSettingsFailed') : error && error.message ? error.message : String(error));
             putMark(id, undefined);
           })
           .then(settle, settle);
@@ -1568,11 +1794,11 @@ window.__ModuleLoader__.load({
         style: { display: 'none' },
       });
 
-      if (!provider) return anchor;
+      if (!provider && !draftRoot) return anchor;
       if (!ReactDOM || typeof ReactDOM.createPortal !== 'function') return anchor;
 
-      var enabled = config.enabled !== false;
-      var allowProbe = config.allowProbe !== false;
+      var enabled = settingsLoad.status !== 'ready' || config.enabled !== false;
+      var allowProbe = !draftRoot && settingsLoad.status === 'ready' && config.allowProbe !== false;
 
       var portals = [];
       for (var i = 0; i < rows.length; i += 1) {
@@ -1647,6 +1873,15 @@ window.__ModuleLoader__.load({
       }, 'model-smart-config: copy dictionaries + inline styles');
 
       var api = createApi(ctx);
+
+      ctx.slots.inject('settings.models.footer', function* () {
+        yield ctx.slots.register({
+          name: 'settings.models.footer',
+          id: 'model-smart-config-custom-draft',
+          locale: NS,
+          inject: function () { return { api: api }; },
+        }, CustomDraftSmartConfig);
+      });
 
       ctx.slots.inject(PROVIDER_SLOT, function* () {
         yield ctx.slots.register(

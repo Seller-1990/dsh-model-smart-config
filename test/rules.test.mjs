@@ -261,7 +261,10 @@ test('规则表自检：真实模型名清单逐条命中（不允许出现「�
   for (const name of REAL_MODEL_NAMES) {
     const { matchedRules, spec, confidence } = resolveSpec(name);
     if (matchedRules.length === 0 || confidence === 'none') missed.push(name);
-    if (spec.contextWindow === undefined) missed.push(name + '（无 contextWindow）');
+    // 型号可识别不代表厂商公布了每项容量；显式 unknown 必须允许不写。
+    if (spec.contextWindow === undefined && spec.fieldSources?.contextWindow !== 'unknown') {
+      missed.push(name + '（容量缺失且未声明未知）');
+    }
   }
   assert.deepEqual(missed, [], `以下真实模型名未命中任何规则：\n${missed.join('\n')}`);
 });

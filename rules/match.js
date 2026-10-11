@@ -47,21 +47,32 @@ export function resolveSpec(rawName, options = {}) {
   const matchedRules = matchRules(normalized);
 
   /** @type {Record<string, unknown>} */
-  const spec = { ...BASE_RULE };
-  for (const index of matchedRules) {
-    const rule = MODEL_RULES[index];
+  const spec = { ...BASE_RULE, fieldSources: {}, fieldEvidence: {} };
+  function applyRule(rule, origin) {
     for (const key of MERGEABLE) {
-      if (rule[key] !== undefined) spec[key] = rule[key];
+      if (rule[key] !== undefined) {
+        spec[key] = rule[key];
+        spec.fieldSources[key] = typeof rule.source === 'string' && rule.source.length > 0 ? 'registry' : 'unknown';
+        spec.fieldEvidence[key] = { ...origin, source: rule.source };
+      }
     }
+    // 省略仍表示继承；明确未知则清除，避免旧世代容量冒充新型号规格。
+    for (const key of rule.unknownFields ?? []) {
+      if (!MERGEABLE.includes(key)) continue;
+      spec[key] = undefined;
+      spec.fieldSources[key] = 'unknown';
+      spec.fieldEvidence[key] = { ...origin, source: rule.source, unknown: true };
+    }
+  }
+  for (const index of matchedRules) {
+    applyRule(MODEL_RULES[index], { rule: index });
   }
 
   const matchedSiteRules = [];
   SITE_RULES.forEach((rule, index) => {
     if (rule.baseURLMatch !== undefined && !(typeof baseURL === 'string' && rule.baseURLMatch.test(baseURL))) return;
     if (rule.apiTypeMatch !== undefined && rule.apiTypeMatch !== api) return;
-    for (const key of MERGEABLE) {
-      if (rule[key] !== undefined) spec[key] = rule[key];
-    }
+    applyRule(rule, { siteRule: index });
     matchedSiteRules.push(index);
   });
 

@@ -353,11 +353,13 @@ wireControlledInputs(doc.getElementById('rowA'));
 const rootA = createRoot(doc.getElementById('slotA'));
 
 async function flush() {
+  // Checkbox verification and advanced-field expansion each use a macrotask.
+  // Commit React between phases so assertions observe the completed match.
   await act(async () => {
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
   await act(async () => {
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 

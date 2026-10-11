@@ -50,8 +50,10 @@ Install (GUI: **Plugin Marketplace → Add plugin**, or CLI):
 dsh plugin --profile <profile> add https://github.com/Seller-1990/dsh-model-smart-config
 ```
 
-Then open **Settings → Models** → any third-party (pi-ai) provider → **Edit** →
-expand **自定义设置 / Customized** → every model row now carries a badge and a **Smart match** button.
+Then open **Settings → Models**. In an existing third-party (pi-ai) provider, choose **Edit** →
+expand **自定义设置 / Customized**. In **Add API → Custom provider**, fetch and adopt models
+(or add a row manually) without saving first. Each row carries a badge and a **Smart match** button.
+Matching updates the host's draft only; the official **Save** / **Cancel** controls retain ownership.
 
 ---
 
@@ -78,8 +80,12 @@ expand **自定义设置 / Customized** → every model row now carries a badge 
 ③ 兜底       未命中 → 端点元数据补数值 → 可选实测探测 → 名称启发式只给候选，不自动写
 ```
 
-思考等级的四条来源按优先级回退（S2 官方服务 → S1 内置表 → S3 实测 → S4 启发式），
-详见 [`docs/03-inference-rules.md`](docs/03-inference-rules.md)。
+字段按来源判定，而非仅凭型号命中：有文档来源的内置字段可写，未知字段保持未设置。
+`resolveModelInfo` 返回的是目录、用户配置和默认值合并后的**当前配置**，
+`msc/authoritative` 将其标记为 `resolved-config`，仅供诊断，不再覆盖注册表建议。
+只有明确标记为 `catalog` 的独立元数据才可优先补全；当前宿主接口不提供该来源证明。
+思考等级继续保留内置表、手动实测与只展示不写的名称候选，详见
+[`docs/03-inference-rules.md`](docs/03-inference-rules.md)。
 
 **规则表是有序正则 + 分层覆盖，不是扁平名表** —— `glm-5.3-flash` 要同时继承
 `glm-5`（容量）、`glm-5.3`（档位）、`glm-5.3-flash`（多模态）三层信息。
@@ -109,7 +115,10 @@ expand **自定义设置 / Customized** → every model row now carries a badge 
   （「获取 model」批量采纳候选走同一条闸门）。
 - **填完可以随便手改**。插件给派发出的 `input` 事件打标，其余写入视为用户手改并登记；
   此后自动路径不再回写你的改动 —— 改 id 也不会抹掉。
-- **想重填就再点一次键**（显式覆盖）。
+- **想重填容量与推理字段可再点一次键**。视觉字段若与已保存的逐模型 `input` 或本次手动选择冲突，
+  保留用户选择并提示手动确认；不会把默认纯文本误当官方结论，也不会强制全部勾选图像。
+- **新建自定义 API 无需先保存**：底部扩展入口只处理当前模型页唯一可见的新建表单；
+  取消、关闭或切换后停止写入并清理按钮。草稿不查询虚构 provider，不提供真实端点探测。
 - **未识别不给假值**：徽标显示「未识别」，点键明说「无建议可写」，不动任何字段。
 
 ### 配置项
@@ -126,13 +135,13 @@ profile 条目上的五个开关（见 [`cordis.patch.yml`](cordis.patch.yml)）
 
 ## 架构
 
-| 层 | 文件 | 规模 |
+| 层 | 文件 | 职责 |
 |---|---|---|
-| Host 半 | [`index.js`](index.js) | 598 行 —— 规则判定、官方目录、实测探测三个 Remote 端点（`msc/infer` / `msc/authoritative` / `msc/probe`） |
-| Client 半 | [`client.js`](client.js) | 1673 行 —— 槽位内隐藏锚点 + 逐行容器 + `createPortal`，把「徽标 + 记号 + 智能匹配 + 图标键」渲染进每条官方模型行 |
-| 规则数据 | [`data/model-rules.js`](data/model-rules.js) | 2031 行 —— 201 条有序正则规则 / 33 家厂商，每条带官方文档 `source` |
-| 判定层 | [`rules/`](rules) | `normalize.js` 47 / `match.js` 77 / `infer.js` 188 行 |
-| 测试 | [`test/`](test) | 规则表断言 + 真实模型名识别自检 + 渲染 + 行内挂载 + jsdom 交互链路 |
+| Host 半 | [`index.js`](index.js) | 规则判定、当前解析配置、实测探测：`msc/infer` / `msc/authoritative` / `msc/probe` |
+| Client 半 | [`client.js`](client.js) | Provider 卡片与新增草稿入口、逐行 Portal、受控表单填值与生命周期清理 |
+| 规则数据 | [`data/model-rules.js`](data/model-rules.js) | 有序正则规则与逐字段文档来源；显式未知字段不继承旧值 |
+| 判定层 | [`rules/`](rules) | 名称归一化、分层匹配、字段来源和可写性判定 |
+| 测试 | [`test/`](test) | 规则、来源、宿主 RPC、渲染、挂载、React 受控交互与草稿回归 |
 
 **行内定位不依赖 CSS-module 哈希类名**（哈希随构建变）。插件只用官方通过
 `data-plugin-css` 注入的**稳定字面类名** `label.dshModelModalityToggleCompact` 作行锚点
@@ -145,8 +154,9 @@ profile 条目上的五个开关（见 [`cordis.patch.yml`](cordis.patch.yml)）
 
 ### 生效条件（两半不同）
 
-- **Client 半**（`client.js`）经 HTTP 路由**按磁盘现取**，改完**刷新页面即生效**；
-- **Host 半**（`index.js` + `data/model-rules.js`）在进程启动时载入，**改完需重启一次 Harness**。
+- Client 与 Host 是不同的加载面；**不能仅凭改磁盘文件或刷新页面断言两者都已更新**。
+- 安装或更新后应分别核对实际提供的 Client bundle 与 Host 推断结果。是否可热更新取决于
+  当前 DSH 的插件加载器；只有核对失败时才考虑由用户确认重启，不以重启替代验证。
 
 ## 安装
 
@@ -159,7 +169,7 @@ dsh plugin --profile <profile> add https://github.com/Seller-1990/dsh-model-smar
 ```
 
 `<spec>` 也接受 `file:` / `link:` 前缀、`.tgz`、或**绝对路径**（相对路径会被拒绝）。
-装完**无需重启**即可热挂载该 bundle（Client 半即时生效，Host 半在下次启动时载入）。
+更新应通过插件管理器或官方 CLI 完成；按上一节核验 Client 与 Host 实际版本，不以安装成功提示替代运行验证。
 
 卸载：
 
@@ -174,8 +184,10 @@ npm install
 npm test
 ```
 
-四套测试：`rules`（规则表断言，**41** 项）、`render`（SSR 首帧，**20** 项）、
-`placement`（行内挂载与空间预算，**55** 项）、`interaction`（jsdom 里的完整交互链路，**35** 项）。
+测试覆盖规则表与字段来源、Host RPC 合同、SSR 首帧、行内挂载与空间预算、
+jsdom 交互、React 受控字段以及新增草稿生命周期。实际桌面宿主 bundle 的装配回归
+使用 `MSC_HOST_MODELS_BUNDLE` 指定本机副本，再执行 `npm run test:host-assembly`；
+未提供该环境变量会明确失败，不会把这一项静默跳过。该测试不等同于当前窗口端到端验收。
 渲染/交互测试需要一份真实的 React 与 jsdom（已列入 `devDependencies`），
 也可以用 `MSC_REACT_ENV` / `MSC_DOM_ENV` 指向别的 `node_modules` 布局。
 
@@ -184,8 +196,8 @@ npm test
 
 ## 密钥与网络
 
-- **默认零网络**。「识别」（`infer`）只查仓库内的规则表；「官方目录查询」（`authoritative`）
-  只读本机已装的官方模型目录。两者都不发请求。
+- **识别默认不发外部网络请求**。`infer` 只查内置规则；兼容端点 `authoritative`
+  只读本机的当前解析配置（不是独立官方目录证明），其 `resolved-config` 字段不作为可写能力。
 - **只有你点「测试」时才会联网**：插件按该 provider 的 `apiKeyEnv`（没有就按 provider 名派生
   `*_API_KEY`）在本机 `credentials` 面解析出密钥，然后**只对你在这个 provider 里填的
   `baseURL`** 发一次最小请求，用来看哪些思考等级会被接受。

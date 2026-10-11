@@ -1,8 +1,19 @@
 # 02 · 插件架构与实现方案
 
 > 插件名：`dsh-model-smart-config`
-> 形态：**UI 插件**（Host 半 + Client 半双入口），挂载点为官方 Models 页的 keyed slot。
-> 交互形态：**混合**（能自动取的直接写；取不到的给候选让用户确认）—— 用户已拍板。
+> 形态：**UI 插件**（Host 半 + Client 半双入口）。已有 provider 使用 keyed slot；新建自定义 API 使用模型页 footer list slot。
+> 当前交互：只识别不自动填值；用户点击「智能匹配」才写入官方草稿，保存/取消仍由宿主管理。
+
+## 当前实现补充（0.3.3-local.1）
+
+以下主体保留早期方案与历次演进记录；当前行为以代码、测试及 README 为准。
+新建草稿从自身 `settings.models.footer` 的稳定 slot wrapper 确定所属 ModelsSection，
+仅处理其中唯一可见的 custom panel，不扫描 document.body，也不依赖 CSS 哈希。
+草稿关闭、取消或替换时撤销 Portal、observer 与异步回填资格；不伪造 provider、不提前保存。
+
+`resolveModelInfo` 只能提供混合后的当前配置，RPC 标记 `resolved-config`，不作为能力证据覆盖规则表。
+字段采用独立来源，显式未知容量保持未设置；图像建议与用户已保存/手改选择冲突时保留选择并提示。
+具体来源规则见 [03 · 推断规则](03-inference-rules.md)。
 
 ---
 

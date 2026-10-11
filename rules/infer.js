@@ -52,6 +52,12 @@ export function isValidReasoningEfforts(value) {
   );
 }
 
+/** BASE_RULE 的默认值不构成能力证据；来源必须跟随具体字段。 */
+function registryField(spec, key) {
+  if (spec?.fieldSources) return spec.fieldSources[key] === 'registry';
+  return typeof spec?.source === 'string' && spec.source.length > 0;
+}
+
 /**
  * 判定输入模态。
  *
@@ -68,8 +74,8 @@ export function resolveModality(spec, context = {}) {
   const { endpointModalities, normalizedName } = context;
   const declared = Array.isArray(spec?.input) ? spec.input.filter((m) => DSH_MODALITIES.includes(m)) : [];
 
-  // ① 注册表命中：只要命中了非兜底规则，spec.input 就是权威的
-  if (declared.length > 0 && spec?.source !== undefined) {
+  // ① 注册表确实声明过 input；其它字段的 source 不能替默认 text 背书。
+  if (declared.length > 0 && registryField(spec, 'input')) {
     return { input: declared, source: 'registry', extraInputs: spec.extraInputs ?? [] };
   }
 
@@ -112,7 +118,7 @@ export function resolveReasoning(spec, context = {}) {
 
   // S1 内置规则表
   const declared = spec?.reasoningEfforts;
-  if (declared !== undefined) {
+  if (declared !== undefined && (!spec?.fieldSources || registryField(spec, 'reasoningEfforts'))) {
     if (isValidReasoningEfforts(declared)) return { reasoningEfforts: declared, source: 'registry' };
     // 规则表写错了：不静默降级成别的值，报出来
     return {
@@ -162,10 +168,14 @@ export function resolveReasoning(spec, context = {}) {
 export function toModelFields(spec, context = {}) {
   const modality = resolveModality(spec, context);
   const reasoning = resolveReasoning(spec, context);
+  const capacity = (key) => registryField(spec, key) && Number.isSafeInteger(spec?.[key]) && spec[key] > 0
+    ? spec[key] : undefined;
+  const contextWindow = capacity('contextWindow');
+  const maxTokens = capacity('maxTokens');
 
   return {
-    contextWindow: spec?.contextWindow,
-    maxTokens: spec?.maxTokens,
+    contextWindow,
+    maxTokens,
     input: modality.input,
     // 只有「注册表命中」才谈得上「公开信息还支持 X」——启发式/端点分支没有这份依据。
     extraInputs: modality.source === 'registry' ? [...modality.extraInputs] : [],
@@ -173,8 +183,8 @@ export function toModelFields(spec, context = {}) {
     // S4 启发式只给候选，UI 拿它提示用户，**不**当结论写。
     reasoningSuggestion: reasoning.suggestion,
     sources: {
-      contextWindow: 'registry',
-      maxTokens: 'registry',
+      contextWindow: contextWindow === undefined ? 'unknown' : 'registry',
+      maxTokens: maxTokens === undefined ? 'unknown' : 'registry',
       input: modality.source,
       reasoningEfforts: reasoning.source,
     },

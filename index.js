@@ -6,12 +6,12 @@
  *      `window.__ModuleLoader__` 的 CJS 风格工厂，**读不到** Host 的 ESM 导出；
  *   ② 官方 `llm` Remote 只暴露 `discoverModels` / `listProviders` /
  *      `listConfigurableProviders` 三个端点，`ctx.llm.resolveModelInfo`
- *      （S2 权威推理元数据）与「实测探测」（S3，要发真实 HTTP 请求）
+ *      （S2 当前解析配置诊断，并非独立目录证据）与「实测探测」（S3，要发真实 HTTP 请求）
  *      都**没有** Remote 形态。
  *
  * 因此本文件注册一个 `msc` 服务并经 `ctx.typert.register` 显式发布三个端点：
  *   - `msc/infer`          纯规则推断（模型识别 + 规格取值）
- *   - `msc/authoritative`  S2：包一层 `ctx.llm.resolveModelInfo`
+ *   - `msc/authoritative`  S2：当前解析配置诊断（保留旧端点名）
  *   - `msc/probe`          S3：手动触发的实测探测（默认不自动调用）
  *
  * ⚠️ 为什么必须显式 `ctx.typert.register` 而不能靠源码标记发现：
@@ -296,6 +296,7 @@ class ModelSmartConfigGateway extends TypertRemoteService {
       reasoningSuggestion: fields.reasoningSuggestion,
       // 每项来源分别标注 —— UI 不能把「启发式候选」冒充成「内置规则表」。
       sources: fields.sources,
+      fieldEvidence: spec.fieldEvidence,
       notes: fields.notes,
       // 官方文档 URL（「官方文档」途径的落点），便于用户核对依据。
       source: spec.source,
@@ -308,16 +309,15 @@ class ModelSmartConfigGateway extends TypertRemoteService {
   }
 
   /* -------------------------------------------------------------- *
-   * msc/authoritative —— S2：官方权威推理元数据
+   * msc/authoritative —— S2：当前解析配置诊断（兼容端点名）
    * -------------------------------------------------------------- */
 
   /**
-   * 问 `ctx.llm.resolveModelInfo` 要权威结论。
-   *
-   * 对 pi-ai 内置 catalog 已知的路由最权威（数据来自 pi-ai 的静态目录 JSON，
-   * 含 `thinkingLevelMap`）；第三方自定义路由没有 catalog 条目，会以
-   * `UNKNOWN_MODEL` 之类失败 —— 这是预期路径，不是错误，所以**不抛异常**，
-   * 而是返回 `{found:false, reason}` 让 Client 半回退到内置规则表。
+   * `resolveModelInfo` returns the effective route configuration, including
+   * user overrides and adapter defaults. It does not expose field provenance,
+   * so even a successfully resolved built-in route is NOT catalog evidence.
+   * Keep the legacy endpoint and value fields for diagnostics; clients must
+   * not promote `source: 'resolved-config'` to an independent recommendation.
    *
    * @param {{provider?: string, model?: string}} request
    */
@@ -334,6 +334,7 @@ class ModelSmartConfigGateway extends TypertRemoteService {
       const efforts = info?.reasoning?.efforts;
       return compact({
         found: true,
+        source: 'resolved-config',
         provider: info.provider,
         id: info.id,
         name: info.name,

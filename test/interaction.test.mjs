@@ -312,13 +312,14 @@ const fakeCtx = {
               return { ok: true, value: answer };
             }
             if (method === 'msc/authoritative') {
-              // 让 claude 走 S2 官方目录，验证「官方优先」这条合并规则。
+              // Resolved configuration can contain text defaults; it is not catalog evidence.
               if (payload.args.request.model === 'anthropic/claude-sonnet-4-5') {
                 return {
                   ok: true,
                   value: {
                     found: true,
-                    name: 'Claude Sonnet 4.5 (catalog)',
+                    source: 'resolved-config',
+                    name: 'Claude Sonnet 4.5 (effective config)',
                     contextWindow: 1000000,
                     inputModalities: ['text'],
                     reasoningEfforts: { off: null, low: 'low', high: 'high', max: 'max' },
@@ -481,8 +482,8 @@ check(
   claudeRow.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded'),
 );
 check(
-  '第一行上下文字段被填成官方目录的 1000000（显示为 1M）',
-  claudeEntry.querySelector('input[aria-label^="modelContextWindow"]')?.getAttribute('data-synced') === '1M',
+  '第一行上下文来自规则表的 200000，而非已解析配置的 1000000',
+  claudeEntry.querySelector('input[aria-label^="modelContextWindow"]')?.getAttribute('data-synced') === '200K',
   String(claudeEntry.querySelector('input[aria-label^="modelContextWindow"]')?.getAttribute('data-synced')),
 );
 check(
@@ -491,13 +492,13 @@ check(
   String(claudeEntry.querySelector('input[aria-label^="modelMaxTokens"]')?.getAttribute('data-synced')),
 );
 check(
-  '第一行思考等级被填成官方目录的档位（low, high, max）',
-  claudeEntry.querySelector('input[aria-label^="modelReasoningLevels"]')?.getAttribute('data-synced') === 'low, high, max',
+  '第一行思考等级来自规则表（low, medium, high）',
+  claudeEntry.querySelector('input[aria-label^="modelReasoningLevels"]')?.getAttribute('data-synced') === 'low, medium, high',
   String(claudeEntry.querySelector('input[aria-label^="modelReasoningLevels"]')?.getAttribute('data-synced')),
 );
 check(
-  '第一行图像开关被按官方目录（text only）关掉',
-  claudeRow.querySelector('label.dshModelModalityToggleCompact input')?.checked === false,
+  '第一行按公开 image 规则开启图像，不受配置默认 text 覆盖',
+  claudeRow.querySelector('label.dshModelModalityToggleCompact input')?.checked === true,
   String(claudeRow.querySelector('label.dshModelModalityToggleCompact input')?.checked),
 );
 check(
