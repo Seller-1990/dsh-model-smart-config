@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-smart-config",
-  "version": "0.3.3-local.2",
+  "version": "0.3.3",
   "description": "Smart model setup for DeepSeek Harness third-party API providers: recognize a model ID and fill in context window, input modalities and reasoning levels.",
   "license": "MIT",
   "type": "module",

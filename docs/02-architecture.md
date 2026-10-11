@@ -4,7 +4,7 @@
 > 形态：**UI 插件**（Host 半 + Client 半双入口）。已有 provider 使用 keyed slot；新建自定义 API 使用模型页 footer list slot。
 > 当前交互：只识别不自动填值；用户点击「智能匹配」才写入官方草稿，保存/取消仍由宿主管理。
 
-## 当前实现补充（0.3.3-local.1）
+## 当前实现补充（0.3.3）
 
 以下主体保留早期方案与历次演进记录；当前行为以代码、测试及 README 为准。
 新建草稿从自身 `settings.models.footer` 的稳定 slot wrapper 确定所属 ModelsSection，
